@@ -5,34 +5,24 @@ import sys
 from environs import Env
 
 
-def sends_notifications(sms, telegram_token, telegram_chat_id):
-    bot = telegram.Bot(token=telegram_token)
-    bot.send_message(chat_id=telegram_chat_id, text=sms)
-
-
-def checks_status_server(response, params, dvmn_url, headers):
-    if response.json()['status'] == 'found':
-        response = requests.get(
-                    dvmn_url,
-                    headers=headers,
-                    params=params,
-                    timeout=90
-                    )
-        response.raise_for_status()
-
+def get_notification(response):
+    response_json = response.json()
+    if response_json['status'] == 'found':
+        new_attempt = response_json["new_attempts"][0]
         report = (
             'У вас проверили работу '
-            f'"{response.json()["new_attempts"][0]["lesson_title"]}" '
-            f'{response.json()["new_attempts"][0]["lesson_url"]}'
+            f'"{new_attempt["lesson_title"]}" '
+            f'{new_attempt["lesson_url"]}'
             '\n\nК сожалению, в работе нашлись ошибки'
-            if response.json()["new_attempts"][0]["is_negative"]
+            if new_attempt["is_negative"]
             else 'У вас проверили работу'
-            f'"{response.json()["new_attempts"][0]["lesson_title"]}"'
+            f'"{new_attempt["lesson_title"]}"'
             '\n\nПреподавателю все понравилось,можно приступать '
             'к следующему уроку!'
             )
-        return report
-    return None 
+        return report, response_json['last_attempt_timestamp']
+    return None, response_json['last_attempt_timestamp']
+
 
 def main():
     env = Env()
@@ -42,7 +32,8 @@ def main():
     telegram_chat_id = env.str('TELEGRAM_CHAT_ID')
     headers = {'Authorization': f'Token {devman_token}'}
     dvmn_url = 'https://dvmn.org/api/long_polling/'
-    params =None
+    params = {'last_attempt_timestamp': None}
+    bot = telegram.Bot(token=telegram_token)
 
     while True:
         try:
@@ -52,13 +43,14 @@ def main():
                     params=params,
                     timeout=90
                     )
-            response.raise_for_status
-            report = checks_status_server(response, params, dvmn_url, headers)
+            response.raise_for_status()
+            report, params['last_attempt_timestamp'] = get_notification(
+                    response
+                    )
             if report:
-                sends_notifications(report, telegram_token, telegram_chat_id)
+                bot.send_message(chat_id=telegram_chat_id, text=report)
         except requests.exceptions.ReadTimeout as read_timeout:
             sys.stderr.write(f'Превышено время ожидания\n{read_timeout}\n\n')
-            sleep(5)
         except requests.exceptions.ConnectionError as connect_error:
             sys.stderr.write(f'Произошёл сетевой сбой\n{connect_error}\n\n')
             sleep(5)
