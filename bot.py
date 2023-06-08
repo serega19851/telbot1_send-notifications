@@ -7,6 +7,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 
 
+logger = logging.getLogger(__file__)
+
+
 class TelegramLogsHandler(logging.Handler):
     def __init__(self, chat_id, bot):
         super().__init__()
@@ -29,7 +32,6 @@ def main():
     params = {'timestamp': None}
 
     bot = telegram.Bot(token=telegram_token)
-    logger = logging.getLogger(__file__)
     logging.basicConfig(
             filename='app.log',
             format='%(name)s - %(levelname)s - %(asctime)s - %(message)s',
@@ -51,10 +53,10 @@ def main():
                     params=params,
                     )
             response.raise_for_status()
-            info_about_works_check = response.json()
+            work_checks = response.json()
 
-            if info_about_works_check['status'] == 'found':
-                new_attempt = info_about_works_check["new_attempts"][0]
+            if work_checks['status'] == 'found':
+                new_attempt = work_checks["new_attempts"][0]
                 report = (
                     'У вас проверили работу '
                     f'"{new_attempt["lesson_title"]}" '
@@ -68,13 +70,13 @@ def main():
                     )
                 bot.send_message(chat_id=telegram_chat_id, text=report)
                 params = {
-                        'timestamp': info_about_works_check.get(
+                        'timestamp': work_checks.get(
                             'last_attempt_timestamp'
                             )
                         }
             else:
                 params = {
-                        'timestamp': info_about_works_check.get(
+                        'timestamp': work_checks.get(
                             'timestamp_to_request'
                             )
                         }
